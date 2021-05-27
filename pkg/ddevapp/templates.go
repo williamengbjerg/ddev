@@ -136,7 +136,6 @@ services:
       - HTTPS_EXPOSE=${DDEV_ROUTER_HTTPS_PORT}:80,${DDEV_MAILHOG_HTTPS_PORT}:{{ .MailhogPort }}
       - IS_DDEV_PROJECT=true
       - LINES
-      - DDEV_LIVE_NO_ANALYTICS
       - SSH_AUTH_SOCK=/home/.ssh-agent/socket
       - TZ={{ .Timezone }}
       - VIRTUAL_HOST=${DDEV_HOSTNAME}
@@ -362,8 +361,6 @@ const ConfigInstructions = `
 # This is to enable experimentation with alternate file mounting strategies.
 # For advanced users only!
 
-# provider: default # Currently "default", "pantheon", "ddev-live"
-# 
 # Many ddev commands can be extended to run tasks before or after the
 # ddev command is executed, for example "post-start", "post-import-db",
 # "pre-composer", "post-composer"
@@ -450,8 +447,9 @@ services:
       {{ if .letsencrypt }}
       - ddev-router-letsencrypt:/etc/letsencrypt:rw
       {{ end }}
-{{ if .letsencrypt }}
     environment:
+      - DISABLE_HTTP2={{ .disable_http2 }}
+{{ if .letsencrypt }}
       - LETSENCRYPT_EMAIL={{ .letsencrypt_email }}
       - USE_LETSENCRYPT={{ .letsencrypt }}
 {{ end }}

@@ -16,7 +16,7 @@ the .ddev/config.yaml is the primary configuration for the project.
 | webimage | docker image to use for webserver | It is unusual to change the default and is not recommended, but the webimage can be overridden with a correctly crafted image, probably derived from drud/ddev-webserver |
 | dbimage | docker image to use for db server | It is unusual to change the default and is not recommended, but the dbimage can be overridden with a correctly crafted image, probably derived from drud/ddev-dbserver |
 | dbaimage | docker image to use for dba server (phpMyAdmin server) | It is unusual to change the default and is not recommended, but the dbimage can be overridden with a correctly crafted image, probably derived from drud/phpmyadmin |
-| mariadb_version | Version of MariaDB to be used |  Defaults to 10.2, but 5.5, 10.0, 10.1, 10.2, 10.3, 10.4, 10.5 are available. Cannot be used with mysql_version. See [Database Server Types](database_types.md) for details and caveats. |
+| mariadb_version | Version of MariaDB to be used |  Defaults to 10.3, but 5.5, 10.0, 10.1, 10.2, 10.3, 10.4, 10.5 are available. Cannot be used with mysql_version. See [Database Server Types](database_types.md) for details and caveats. |
 | mysql_version | Version of Oracle MySQL to be used |  Defaults to empty (using MariaDB). 5.5, 5.6, 5.7, and 8.0 are available. Conflicts with mariadb_version. See [Database Server Types](database_types.md) for details and caveats. |
 | router_http_port | Port used by the router for http |  Defaults to port 80. This can be changed if there is a conflict on the host over port 80 |
 | router_https_port | Port used by the router for https |Defaults to 443, usually only changed if there is a conflicting process using port 443 |
@@ -45,7 +45,6 @@ the .ddev/config.yaml is the primary configuration for the project.
 | project_tld | defaults to "ddev.site" so project urls become "someproject.ddev.site" | This can be changed to anything that works for you; to keep things the way they were before ddev v1.9, use "ddev.local" |
 | ngrok_args | Extra flags for ngrok when using the `ddev share` command | For example, `--subdomain mysite --auth user:pass`. See [ngrok docs on http flags](https://ngrok.com/docs#http) |
 | disable_settings_management | defaults to false | If true, ddev will not create or update CMS-specific settings files |  |
-| provider| hosting provider for `ddev pull` | "pantheon" or "ddev-live" or "default" |
 | hooks | | See [Extending Commands](../extending-commands.md) for more information. |
 | no_project_mount | Skip mounting the project into the web container | If true, the project will not be mounted by ddev into the web container. This is to enable experimentation with alternate file mounting strategies. Advanced users only! |
 
@@ -61,6 +60,7 @@ The $HOME/.ddev/global_config.yaml has a few key global config options.
 | web_environment | Inject environment variables into web container | For example, `web_environment: ["SOMEENV=someval", "SOMEOTHERENV=someotherval"]`.  |
 | instrumentation_opt_in | Opt in or out of instrumentation reporting | If true, anonymous usage information is sent to ddev via [segment](https://segment.com) |
 | router_bind_all_interfaces | Bind on all network interfaces | If true, ddev-router will bind on all network interfaces instead of just localhost, exposing ddev projects to your local network. If you set this to true, you may consider `omit_containers: ["dba"]` so that the phpMyAdmin port is not available.  |
+| disable_http2 | Disable http/2 listen in ddev-router | If true, nginx will not listen for http/2, but just use http/1.1 ssl. There are some browsers which don't work well with http/2. |
 | internet_detection_timeout_ms | Internet detection timeout | ddev must detect whether the internet is working to determine whether to add hostnames to /etc/hosts. It uses a DNS query and times it out by default at 750ms. In rare cases you may need to increase this value if you have slow but working internet. See [FAQ](../faq.md) and [issue link](https://github.com/drud/ddev/issues/2409#issuecomment-662448025).|
 | use_hardened_images | If true, use more secure 'hardened' images for an actual internet deployment | The most important thing about hardened images is that sudo is not included in the web container, and the container is run without elevated privileges. This is generally used with experimental casual hosting feature. |
 | use_letsencrypt | If true, enables experimental Let's Encrypt integration | 'ddev global --use-letsencrypt' or `ddev global --use-letsencrypt=false'. This requires letsencrypt_email to be set, and can't work if the system is not available on the internet. Used with experimental casual hosting feature. |

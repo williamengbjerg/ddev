@@ -2,7 +2,7 @@
 
 @test "Verify required binaries are installed in normal image" {
     if [ "${IS_HARDENED}" == "true" ]; then skip "Skipping because IS_HARDENED==true"; fi
-    COMMANDS="composer ddev-live drush8 git magerun magerun2 mkcert node npm platform sudo terminus wp"
+    COMMANDS="composer drush8 git magerun magerun2 mkcert node npm platform sudo terminus wp"
     for item in $COMMANDS; do
 #      echo "# looking for $item" >&3
       docker exec $CONTAINER_NAME bash -c "command -v $item >/dev/null"
@@ -11,7 +11,7 @@
 
 @test "Verify some binaries binaries (sudo) are NOT installed in hardened image" {
     if [ "${IS_HARDENED}" != "true" ]; then skip "Skipping because IS_HARDENED==false"; fi
-    COMMANDS="ddev-live sudo terminus"
+    COMMANDS="sudo terminus"
     for item in $COMMANDS; do
       rv=1
       docker exec $CONTAINER_NAME bash -c "command -v $item >/dev/null 2>/dev/null" || rv=$?
@@ -46,4 +46,22 @@
 	if [ "$ERRMSG" != "Upstream error message" ] ; then
 	  exit 108
 	fi
+}
+
+
+@test "verify apt keys are not expiring" {
+  MAX_DAYS_BEFORE_EXPIRATION=90
+  if [ "${DDEV_IGNORE_EXPIRING_KEYS:-}" = "true" ]; then
+    skip "Skipping because DDEV_IGNORE_EXPIRING_KEYS is set"
+  fi
+  docker exec -e "max=$MAX_DAYS_BEFORE_EXPIRATION" ${CONTAINER_NAME} bash -c '
+    dates=$(apt-key list 2>/dev/null | awk "/\[expires/ { gsub(/[\[\]]/, \"\"); print \$6;}")
+    for item in ${dates}; do
+      today=$(date -I)
+      let diff=($(date +%s -d ${item})-$(date +%s -d ${today}))/86400
+      if [ ${diff} -le ${max} ]; then
+        exit 1
+      fi
+    done
+  '
 }

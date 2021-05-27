@@ -16,7 +16,7 @@ GOFILES = $(shell find $(SRC_DIRS) -name "*.go")
 # Expands SRC_DIRS into the common golang ./dir/... format for "all below"
 SRC_AND_UNDER = $(patsubst %,./%/...,$(SRC_DIRS))
 
-GOLANGCI_LINT_ARGS ?= --out-format=line-number --disable-all --enable=gofmt --enable=govet --enable=golint --enable=errcheck --enable=staticcheck --enable=ineffassign --enable=varcheck --enable=deadcode
+GOLANGCI_LINT_ARGS ?= --out-format=line-number --disable-all --enable=gofmt --enable=govet --enable=revive --enable=errcheck --enable=staticcheck --enable=ineffassign --enable=varcheck --enable=deadcode
 
 WINDOWS_GSUDO_VERSION=v0.7.3
 WINNFSD_VERSION=2.4.0
@@ -25,7 +25,6 @@ MKCERT_VERSION=v1.4.6
 
 GOTESTSUM_FORMAT ?= short-verbose
 TESTTMP=/tmp/testresults
-DOWNLOADTMP=$(HOME)/tmp
 
 # This repo's root import path (under GOPATH).
 PKG := github.com/drud/ddev
@@ -104,7 +103,7 @@ linux_arm64: $(GOTMP)/bin/linux_arm64/ddev
 linux_arm: $(GOTMP)/bin/linux_arm/ddev
 darwin_amd64: $(GOTMP)/bin/darwin_amd64/ddev
 darwin_arm64: $(GOTMP)/bin/darwin_arm64/ddev
-windows_amd64: $(GOTMP)/bin/windows_amd64/ddev.exe
+windows_amd64: windows_install
 windows_arm64: $(GOTMP)/bin/windows_arm64/ddev.exe
 
 TARGETS=$(GOTMP)/bin/linux_amd64/ddev $(GOTMP)/bin/linux_arm64/ddev $(GOTMP)/bin/linux_arm/ddev $(GOTMP)/bin/darwin_amd64/ddev $(GOTMP)/bin/darwin_arm64/ddev $(GOTMP)/bin/windows_amd64/ddev.exe
@@ -128,8 +127,10 @@ TEST_TIMEOUT=150m
 BUILD_ARCH = $(shell go env GOARCH)
 
 DDEVNAME=ddev
+SHASUM=shasum -a 256
 ifeq ($(BUILD_OS),windows)
 	DDEVNAME=ddev.exe
+	SHASUM=sha256sum
 endif
 
 DDEV_BINARY_FULLPATH=$(PWD)/$(GOTMP)/bin/$(BUILD_OS)_$(BUILD_ARCH)/$(DDEVNAME)
@@ -156,7 +157,6 @@ testfullsitesetup: $(DEFAULT_BUILD) setup
 setup:
 	@mkdir -p $(GOTMP)/{src,pkg/mod/cache,.cache}
 	@mkdir -p $(TESTTMP)
-	@mkdir -p $(DOWNLOADTMP)
 
 # Required static analysis targets used in circleci - these cause fail if they don't work
 staticrequired: setup golangci-lint markdownlint mkdocs pyspelling
@@ -222,11 +222,11 @@ darwin_arm64_notarized: darwin_arm64_signed
 windows_install: $(GOTMP)/bin/windows_amd64/ddev_windows_installer.$(VERSION).exe
 
 $(GOTMP)/bin/windows_amd64/ddev_windows_installer.$(VERSION).exe:  $(GOTMP)/bin/windows_amd64/ddev.exe $(GOTMP)/bin/windows_amd64/sudo.exe $(GOTMP)/bin/windows_amd64/sudo_license.txt $(GOTMP)/bin/windows_amd64/nssm.exe $(GOTMP)/bin/windows_amd64/winnfsd.exe $(GOTMP)/bin/windows_amd64/winnfsd_license.txt $(GOTMP)/bin/windows_amd64/mkcert.exe $(GOTMP)/bin/windows_amd64/mkcert_license.txt winpkg/ddev.nsi
-	@if [ -z "$(DDEV_WINDOWS_SIGNING_PASSWORD)" ] ; then echo "Skipping signing ddev.exe, no DDEV_WINDOWS_SIGNING_PASSWORD provided"; else echo "Signing windows ddev.exe..." && mv $< $<.unsigned && osslsigncode sign -pkcs12 certfiles/drud_cs.p12  -n "DDEV-Local Binary" -i https://ddev.com -in $<.unsigned -out $< -t http://timestamp.digicert.com -pass $(DDEV_WINDOWS_SIGNING_PASSWORD); fi
-
+	ls -l .gotmp/bin/windows_amd64
+	@if [ "$(DDEV_WINDOWS_SIGN)" != "true" ] ; then echo "Skipping signing ddev.exe, DDEV_WINDOWS_SIGN not set"; else echo "Signing windows binaries..." && signtool sign ".gotmp/bin/windows_amd64/ddev.exe" ".gotmp/bin/windows_amd64/mkcert.exe" ".gotmp/bin/windows_amd64/nssm.exe" ".gotmp/bin/windows_amd64/winnfsd.exe" ".gotmp/bin/windows_amd64/ddev_gen_autocomplete.exe"; fi
 	@makensis -DVERSION=$(VERSION) winpkg/ddev.nsi  # brew install makensis, apt-get install nsis, or install on Windows
-	@if [ -z "$(DDEV_WINDOWS_SIGNING_PASSWORD)" ] ; then echo "Skipping signing ddev_windows_installer, no DDEV_WINDOWS_SIGNING_PASSWORD provided"; else echo "Signing windows installer binary..."&& mv $@ $@.unsigned && osslsigncode sign -pkcs12 certfiles/drud_cs.p12  -n "DDEV-Local Installer" -i https://ddev.com -in $@.unsigned -out $@ -t http://timestamp.digicert.com -pass $(DDEV_WINDOWS_SIGNING_PASSWORD); fi
-	shasum -a 256 $@ >$@.sha256.txt
+	@if [ "$(DDEV_WINDOWS_SIGN)" != "true" ] ; then echo "Skipping signing ddev_windows_installer, DDEV_WINDOWS_SIGN not set"; else echo "Signing windows installer binary..." && signtool sign "$@"; fi
+	$(SHASUM) $@ >$@.sha256.txt
 
 no_v_version:
 	@echo $(NO_V_VERSION)
@@ -237,18 +237,22 @@ chocolatey: $(GOTMP)/bin/windows_amd64/ddev_windows_installer.$(VERSION).exe
 	perl -pi -e 's/REPLACE_DDEV_VERSION/$(VERSION)/g' $(GOTMP)/bin/windows_amd64/chocolatey/tools/*.ps1
 	perl -pi -e 's/REPLACE_GITHUB_ORG/$(GITHUB_ORG)/g' $(GOTMP)/bin/windows_amd64/chocolatey/*.nuspec $(GOTMP)/bin/windows_amd64/chocolatey/tools/*.ps1 #GITHUB_ORG is for testing, for example when the binaries are on rfay acct
 	perl -pi -e "s/REPLACE_INSTALLER_CHECKSUM/$$(cat $(GOTMP)/bin/windows_amd64/ddev_windows_installer.$(VERSION).exe.sha256.txt | awk '{ print $$1; }')/g" $(GOTMP)/bin/windows_amd64/chocolatey/tools/*
-	docker run --rm -v "/$(PWD)/$(GOTMP)/bin/windows_amd64/chocolatey:/tmp/chocolatey" -w /tmp/chocolatey linuturk/mono-choco pack ddev.nuspec
-	@echo "chocolatey package is in $(GOTMP)/bin/windows_amd64/chocolatey"
+	if [[ "$(NO_V_VERSION)" =~ -g[0-9a-f]+ ]]; then \
+  		echo "Skipping chocolatey build on interim version"; \
+	else \
+		docker run --rm -v "/$(PWD)/$(GOTMP)/bin/windows_amd64/chocolatey:/tmp/chocolatey" -w "//tmp/chocolatey" linuturk/mono-choco pack ddev.nuspec; \
+		@echo "chocolatey package is in $(GOTMP)/bin/windows_amd64/chocolatey"; \
+	fi
 
 $(GOTMP)/bin/windows_amd64/mkcert.exe $(GOTMP)/bin/windows_amd64/mkcert_license.txt:
 	curl --fail -sSL -o $(GOTMP)/bin/windows_amd64/mkcert.exe  https://github.com/drud/mkcert/releases/download/$(MKCERT_VERSION)/mkcert-$(MKCERT_VERSION)-windows-amd64.exe
 	curl --fail -sSL -o $(GOTMP)/bin/windows_amd64/mkcert_license.txt -O https://raw.githubusercontent.com/drud/mkcert/master/LICENSE
 
-https://github.com/gerardog/gsudo/releases/download/v0.7.3/gsudo.v0.7.3.zip
 $(GOTMP)/bin/windows_amd64/sudo.exe $(GOTMP)/bin/windows_amd64/sudo_license.txt:
-	curl  -sSL --create-dirs -o $(DOWNLOADTMP)/gsudo.zip  https://github.com/gerardog/gsudo/releases/download/$(WINDOWS_GSUDO_VERSION)/gsudo.$(WINDOWS_GSUDO_VERSION).zip
-	unzip -o -d $(GOTMP)/bin/windows_amd64 $(DOWNLOADTMP)/gsudo.zip && mv $(GOTMP)/bin/windows_amd64/gsudo.exe $(GOTMP)/bin/windows_amd64/sudo.exe
-	curl --fail -sSL -o $(GOTMP)/bin/windows_amd64/sudo_license.txt https://raw.githubusercontent.com/gerardog/gsudo/master/LICENSE.txt
+	set -x
+	curl  -sSL --create-dirs -o "$(GOTMP)/bin/windows_amd64/gsudo.zip"  https://github.com/gerardog/gsudo/releases/download/$(WINDOWS_GSUDO_VERSION)/gsudo.$(WINDOWS_GSUDO_VERSION).zip
+	unzip -o -d "$(GOTMP)/bin/windows_amd64" "$(GOTMP)/bin/windows_amd64/gsudo.zip" gsudo.exe && mv "$(GOTMP)/bin/windows_amd64/gsudo.exe" "$(GOTMP)/bin/windows_amd64/sudo.exe"
+	curl --fail -sSL -o "$(GOTMP)/bin/windows_amd64/sudo_license.txt" "https://raw.githubusercontent.com/gerardog/gsudo/master/LICENSE.txt"
 
 $(GOTMP)/bin/windows_amd64/nssm.exe $(GOTMP)/bin/windows_amd64/winnfsd_license.txt $(GOTMP)/bin/windows_amd64/winnfsd.exe :
 	curl --fail -sSL -o $(GOTMP)/bin/windows_amd64/winnfsd.exe  https://github.com/winnfsd/winnfsd/releases/download/$(WINNFSD_VERSION)/WinNFSd.exe
