@@ -35,11 +35,12 @@ if ! docker ps >/dev/null 2>&1 ; then
   exit 1
 fi
 
-if [ ! -z "${DOCKERHUB_PULL_USERNAME:-}" ]; then
-  set +x
-  echo "${DOCKERHUB_PULL_PASSWORD:-}" | docker login --username "${DOCKERHUB_PULL_USERNAME}" --password-stdin
-  set -x
-fi
+# Try to get important names cached; try twice
+docker run --rm alpine sh -c '
+  for hostname in github.com raw.githubusercontent.com github-releases.githubusercontent.com registry-1.docker.io auth.docker.io production.cloudflare.docker.com; do
+    nslookup $hostname >/dev/null 2>&1 || nslookup $hostname >/dev/null 2>&1 || true
+  done
+'
 
 rm -rf ~/.ddev/Test* ~/.ddev/global_config.yaml ~/.ddev/homeadditions ~/.ddev/commands
 

@@ -40,13 +40,13 @@ var DockerComposeFileFormatVersion = "3.6"
 var WebImg = "drud/ddev-webserver"
 
 // WebTag defines the default web image tag for drud dev
-var WebTag = "20210502_thomasdiluccio_blackfire" // Note that this can be overridden by make
+var WebTag = "20210615_use_large_header_buffers" // Note that this can be overridden by make
 
 // DBImg defines the default db image used for applications.
 var DBImg = "drud/ddev-dbserver"
 
 // BaseDBTag is the main tag, DBTag is constructed from it
-var BaseDBTag = "v1.17.0"
+var BaseDBTag = "v1.17.3"
 
 // DBAImg defines the default phpmyadmin image tag used for applications.
 var DBAImg = "phpmyadmin"
@@ -58,7 +58,7 @@ var DBATag = "5" // Note that this can be overridden by make
 var RouterImage = "drud/ddev-router"
 
 // RouterTag defines the tag used for the router.
-var RouterTag = "20210518_allow_disable_http2" // Note that this can be overridden by make
+var RouterTag = "20210617_ddev_router_latest_nginx" // Note that this can be overridden by make
 
 // SSHAuthImage is image for agent
 var SSHAuthImage = "drud/ddev-ssh-agent"

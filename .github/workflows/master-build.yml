@@ -20,6 +20,7 @@ jobs:
     runs-on: ubuntu-20.04
     env:
       AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+      SegmentKey: ${{ secrets.SEGMENTKEY }}
 
     steps:
       - uses: actions/checkout@v2
@@ -40,6 +41,17 @@ jobs:
       - name: Build DDEV executables
         run: make linux_amd64 linux_arm64 darwin_amd64 darwin_arm64
 
+      - name: "Verify that SegmentKey is working (Linux amd64)"
+        run: |
+          export PATH=".gotmp/bin/linux_amd64:$PATH"
+          echo "DDEV_NO_INSTRUMENTATION=${DDEV_NO_INSTRUMENTATION}"
+          if [ -z "${SegmentKey}" ]; then echo "SegmentKey is not set"; exit 1; fi
+          ddev config global --instrumentation-opt-in=true
+          ddev config global | grep instrumentation-opt-in=true
+          ddev config global | grep -v "SegmentKey is not available."
+          ddev config global --instrumentation-opt-in=false
+
+
       - name: save build results to cache
         uses: actions/cache@v2
         with:
@@ -49,6 +61,9 @@ jobs:
   sign-windows:
     name: Build and Sign Windows binaries
     runs-on: [ self-hosted, windows-signer ]
+    env:
+      AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+      SegmentKey: ${{ secrets.SEGMENTKEY }}
     steps:
       - uses: actions/checkout@v2
         with:
@@ -63,6 +78,17 @@ jobs:
       - name: Build chocolatey on release
         if: startsWith( github.ref, 'refs/tags/v1')
         run: make chocolatey
+
+      - name: "Verify that SegmentKey is working (Windows)"
+        run: |
+          export PATH=".gotmp/bin/windows_amd64:$PATH"
+          echo "DDEV_NO_INSTRUMENTATION=${DDEV_NO_INSTRUMENTATION}"
+          if [ -z "${SegmentKey}" ]; then echo "SegmentKey is not set"; exit 1; fi
+          ddev config global --instrumentation-opt-in=true
+          ddev config global | grep instrumentation-opt-in=true
+          ddev config global | grep -v "SegmentKey is not available."
+          ddev config global --instrumentation-opt-in=false
+
       - name: Cache signed binaries
         uses: actions/cache@v2
         with:
@@ -207,7 +233,7 @@ jobs:
           args: ${{ github.workspace }}/artifacts/*
 
       - name: "Bump homebrew edge release"
-        if: env.DDEV_GITHUB_TOKEN != '' && startsWith( github.ref, 'refs/tags/v1') && contains( github.ref, '-')
+        if: env.DDEV_GITHUB_TOKEN != '' && startsWith( github.ref, 'refs/tags/v1')
         run: |
           bash -x .ci-scripts/bump_homebrew.sh ${HOMEBREW_EDGE_REPOSITORY} ddev ${GITHUB_REF##*/} ${{ github.workspace }}/artifacts ${DDEV_MAIN_REPO_ORGNAME}
 
@@ -217,7 +243,7 @@ jobs:
           bash -x .ci-scripts/bump_homebrew.sh ${HOMEBREW_STABLE_REPOSITORY} ddev ${GITHUB_REF##*/} ${{ github.workspace }}/artifacts ${DDEV_MAIN_REPO_ORGNAME}
 
       - name: "Push AUR ddev-edge-bin"
-        if: env.AUR_SSH_PRIVATE_KEY != '' && startsWith( github.ref, 'refs/tags/v1') && contains( github.ref, '-')
+        if: env.AUR_SSH_PRIVATE_KEY != '' && startsWith( github.ref, 'refs/tags/v1')
         run: |
           echo GITHUB_REF=${GITHUB_REF}
           .ci-scripts/bump_aur.sh ddev-edge-bin ${GITHUB_REF##*/} ${{ github.workspace }}/artifacts
