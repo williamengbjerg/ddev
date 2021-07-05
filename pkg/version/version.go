@@ -31,7 +31,7 @@ var DockerVersionConstraint = ">= 18.06.1-alpha1"
 // REMEMBER TO CHANGE docs/index.md if you touch this!
 // The constraint MUST HAVE a -pre of some kind on it for successful comparison.
 // See https://github.com/drud/ddev/pull/738.. and regression https://github.com/drud/ddev/issues/1431
-var DockerComposeVersionConstraint = ">= 1.21.0-alpha1"
+var DockerComposeVersionConstraint = "1.21.0-alpha1 - 1.999.0"
 
 // DockerComposeFileFormatVersion is the compose version to be used
 var DockerComposeFileFormatVersion = "3.6"
@@ -40,13 +40,13 @@ var DockerComposeFileFormatVersion = "3.6"
 var WebImg = "drud/ddev-webserver"
 
 // WebTag defines the default web image tag for drud dev
-var WebTag = "v1.17.6" // Note that this can be overridden by make
+var WebTag = "20210628_lang_utf8" // Note that this can be overridden by make
 
 // DBImg defines the default db image used for applications.
 var DBImg = "drud/ddev-dbserver"
 
 // BaseDBTag is the main tag, DBTag is constructed from it
-var BaseDBTag = "v1.17.3"
+var BaseDBTag = "20210628_lang_utf8"
 
 // DBAImg defines the default phpmyadmin image tag used for applications.
 var DBAImg = "phpmyadmin"
@@ -147,14 +147,6 @@ func GetDockerComposeVersion() (string, error) {
 	path, err := exec.LookPath(executableName)
 	if err != nil {
 		return "", fmt.Errorf("no docker-compose")
-	}
-
-	// Temporarily fake the docker-compose check on macOS because of
-	// the slow docker-compose problem in https://github.com/docker/compose/issues/6956
-	// This can be removed when that's resolved.
-	if runtime.GOOS != "darwin" {
-		DockerComposeVersion = "1.25.0-rc4"
-		return DockerComposeVersion, nil
 	}
 
 	out, err := exec.Command(path, "version", "--short").Output()
