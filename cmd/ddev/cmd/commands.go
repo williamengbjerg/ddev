@@ -68,7 +68,7 @@ func addCustomCommands(rootCmd *cobra.Command) error {
 				return err
 			}
 			if runtime.GOOS == "windows" {
-				windowsBashPath := util.FindWindowsBashPath()
+				windowsBashPath := util.FindBashPath()
 				if windowsBashPath == "" {
 					fmt.Println("Unable to find bash.exe in PATH, not loading custom commands")
 					return nil
@@ -209,7 +209,7 @@ func addCustomCommands(rootCmd *cobra.Command) error {
 func makeHostCmd(app *ddevapp.DdevApp, fullPath, name string) func(*cobra.Command, []string) {
 	var windowsBashPath = ""
 	if runtime.GOOS == "windows" {
-		windowsBashPath = util.FindWindowsBashPath()
+		windowsBashPath = util.FindBashPath()
 	}
 
 	return func(cmd *cobra.Command, cobraArgs []string) {
@@ -296,7 +296,11 @@ func findDirectivesInScriptCommand(script string) map[string]string {
 		if strings.HasPrefix(line, "## ") && strings.Contains(line, ":") {
 			line = strings.Replace(line, "## ", "", 1)
 			parts := strings.SplitN(line, ":", 2)
-			parts[1] = strings.Trim(parts[1], " \"'")
+			if parts[0] == "Example" {
+				parts[1] = strings.Trim(parts[1], " ")
+			} else {
+				parts[1] = strings.Trim(parts[1], " \"'")
+			}
 			directives[parts[0]] = parts[1]
 		}
 	}

@@ -179,7 +179,7 @@ func TestAcquiaPush(t *testing.T) {
 	})
 
 	app.Name = t.Name()
-	app.Type = nodeps.AppTypeDrupal8
+	app.Type = nodeps.AppTypeDrupal9
 	app.Hooks = map[string][]YAMLTask{"post-push": {{"exec-host": "touch hello-post-push-" + app.Name}}, "pre-push": {{"exec-host": "touch hello-pre-push-" + app.Name}}}
 	_ = app.Stop(true, false)
 
@@ -242,6 +242,9 @@ func TestAcquiaPush(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Contains(out, tval)
+
+	err = app.MutagenSyncFlush()
+	assert.NoError(err)
 
 	assert.FileExists("hello-pre-push-" + app.Name)
 	assert.FileExists("hello-post-push-" + app.Name)

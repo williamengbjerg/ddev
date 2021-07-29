@@ -724,7 +724,7 @@ func TestConfigOverrideDetection(t *testing.T) {
 
 	require.NoError(t, startErr, "app.StartAndWait() did not succeed: output:\n=====\n%s\n===== logs:\n========= logs =======\n%s\n========\n", stdout, logs)
 
-	assert.Contains(stdout, "utf.cnf")
+	assert.Contains(stdout, "collation.cnf")
 	assert.Contains(stdout, "my-php.ini")
 
 	switch app.WebserverType {
@@ -786,7 +786,7 @@ func TestPHPOverrides(t *testing.T) {
 		t.Fatalf("============== logs from app.StartAndWait() ==============\n%s\n", logs)
 	}
 
-	_, _ = testcommon.EnsureLocalHTTPContent(t, "http://"+app.GetHostname()+"/phpinfo.php", `max_input_time</td><td class="v">999`)
+	_, _ = testcommon.EnsureLocalHTTPContent(t, "http://"+app.GetHostname()+"/phpinfo.php", `max_input_time</td><td class="v">999`, 60)
 	err = app.Stop(true, false)
 	assert.NoError(err)
 

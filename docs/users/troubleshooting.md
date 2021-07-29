@@ -6,11 +6,12 @@ Things might go wrong! Besides the suggestions on this page don't forget about [
 
 * Please start with a `ddev poweroff` to make sure all containers can start fresh.
 * Temporarily turn off firewalls, VPNs, network proxies, and virus checkers while you're troubleshooting.
+* If you have any proxies set up in Docker's settings, temporarily remove them.
 * On macOS and traditional Windows, please check to make sure that Docker Desktop is not out of disk space. In Settings (or Preferences)->Resources->Disk image size there should be lots of space left; I never let it go over 80% because the number reported here is not reliable. If it says zero used, something is wrong.
 * If you have customizations (PHP overrides, nginx or Apache overrides, MySQL overrides, custom services, config.yaml changes) please back them out while troubleshooting. It's important to have the simplest possible environment while troubleshooting.
 * Check your Docker disk space and memory allocation if you're using Docker Desktop on Windows or macOS.
 * Restart Docker. Consider a Docker factory reset in serious cases (this will destroy any databases you've loaded). See [Docker Troubleshooting](docker_installation.md#troubleshooting) for more.
-* Try the simplest possible ddev project to try to get it to work: `ddev poweroff && mkdir ~/tmp/testddev && cd ~/tmp/testddev && ddev config --project-type=php && ddev start`. Does that start up OK? If so, maybe something is wrong with the more complicated project you're trying to start.
+* Try the simplest possible ddev project to try to get it to work: `ddev poweroff && mkdir ~/tmp/testddev && cd ~/tmp/testddev && ddev config --project-type=php && printf "<?php\nphpinfo();\n" > index.php && ddev start`. Does that start up OK? If so, maybe something is wrong with the more complicated project you're trying to start.
 
 <a name="unable-listen"></a>
 
