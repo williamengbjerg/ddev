@@ -6,16 +6,17 @@ import (
 	"fmt"
 	"github.com/drud/ddev/pkg/archive"
 	exec2 "github.com/drud/ddev/pkg/exec"
+	"github.com/drud/ddev/pkg/nodeps"
 	"github.com/drud/ddev/pkg/util"
 	"github.com/drud/ddev/pkg/version"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
 	"regexp"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -876,7 +877,7 @@ func CopyToVolume(sourcePath string, volumeName string, targetSubdir string, uid
 	// nolint: errcheck
 	defer RemoveContainer(containerID, 0)
 
-	tmpTar, err := ioutil.TempFile("", "CopyToVolume")
+	tmpTar, err := os.CreateTemp("", "CopyToVolume")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -947,4 +948,14 @@ func Exec(containerID string, command string) (string, string, error) {
 	}
 
 	return stdout.String(), stderr.String(), execErr
+}
+
+// CheckAvailableSpace outputs a warning if docker space is low
+func CheckAvailableSpace() {
+	_, out, _ := RunSimpleContainer(version.GetWebImage(), "", []string{"sh", "-c", `df -h / | awk '/overlay/ {print $5;}'`}, []string{}, []string{}, []string{"testnfsmount" + ":/nfsmount"}, "", true, false, nil)
+	out = strings.Trim(out, "% \n")
+	spacePercent, _ := strconv.Atoi(out)
+	if (100 - spacePercent) < nodeps.MinimumDockerSpaceWarning {
+		util.Error("Your docker installation has less than %d%% available space (%d%% used). Please increase disk image size.", nodeps.MinimumDockerSpaceWarning, spacePercent)
+	}
 }

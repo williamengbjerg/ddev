@@ -8,7 +8,6 @@ import (
 	"github.com/mitchellh/go-homedir"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v2"
-	"io/ioutil"
 	"net"
 	"os"
 	"os/exec"
@@ -66,7 +65,7 @@ func GetGlobalConfigPath() string {
 
 // GetMutagenDir returns the directory of the mutagen config and binary
 func GetMutagenDir() string {
-	return filepath.Join(GetGlobalDdevDir(), ".mutagen")
+	return filepath.Join(GetGlobalDdevDir(), "bin")
 }
 
 // GetMutagenPath gets the full path to the mutagen binary
@@ -75,7 +74,7 @@ func GetMutagenPath() string {
 	if runtime.GOOS == "windows" {
 		mutagenBinary = mutagenBinary + ".exe"
 	}
-	return filepath.Join(GetMutagenDir(), "bin", mutagenBinary)
+	return filepath.Join(GetMutagenDir(), mutagenBinary)
 }
 
 // ValidateGlobalConfig validates global config
@@ -109,7 +108,7 @@ func ReadGlobalConfig() error {
 		}
 	}
 
-	source, err := ioutil.ReadFile(globalConfigFile)
+	source, err := os.ReadFile(globalConfigFile)
 	if err != nil {
 		return fmt.Errorf("Unable to read ddev global config file %s: %v", source, err)
 	}
@@ -230,7 +229,7 @@ func WriteGlobalConfig(config GlobalConfig) error {
 `
 	cfgbytes = append(cfgbytes, instructions...)
 
-	err = ioutil.WriteFile(GetGlobalConfigPath(), cfgbytes, 0644)
+	err = os.WriteFile(GetGlobalConfigPath(), cfgbytes, 0644)
 	if err != nil {
 		return err
 	}

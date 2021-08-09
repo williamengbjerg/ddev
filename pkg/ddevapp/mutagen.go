@@ -1,9 +1,10 @@
 package ddevapp
 
 import (
+	"bufio"
 	"fmt"
-	"github.com/Masterminds/semver"
 	"github.com/drud/ddev/pkg/archive"
+	"github.com/drud/ddev/pkg/dockerutil"
 	"github.com/drud/ddev/pkg/exec"
 	"github.com/drud/ddev/pkg/fileutil"
 	"github.com/drud/ddev/pkg/globalconfig"
@@ -12,10 +13,13 @@ import (
 	"github.com/drud/ddev/pkg/util"
 	"github.com/drud/ddev/pkg/version"
 	"github.com/pkg/errors"
+	"golang.org/x/term"
 	"os"
+	osexec "os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 )
 
 // SetMutagenVolumeOwnership chowns the volume in use to the current user.
@@ -51,21 +55,22 @@ func TerminateMutagenSync(app *DdevApp) error {
 				return err
 			}
 		}
+		util.Success("Terminated mutagen sync session '%s'", syncName)
 	}
 	return nil
 }
 
-// SyncAndTerminateMutagen syncs and terminates the mutagen sync
-func SyncAndTerminateMutagen(app *DdevApp) error {
+// SyncAndTerminateMutagenSession syncs and terminates the mutagen sync session
+func SyncAndTerminateMutagenSession(app *DdevApp) error {
 	if app.MutagenEnabled || app.MutagenEnabledGlobal {
 		syncName := MutagenSyncName(app.Name)
 
 		if !MutagenSyncExists(app) {
-			return errors.Errorf("Sync %v does nto exist", syncName)
+			return errors.Errorf("Sync session '%v' does nto exist", syncName)
 		}
 		err := app.MutagenSyncFlush()
 		if err != nil {
-			util.Error("Error on mutagen sync flush %s: %v", syncName, err)
+			util.Error("Error on 'mutagen sync flush %s': %v", syncName, err)
 		}
 		err = TerminateMutagenSync(app)
 		if err != nil {
@@ -109,35 +114,86 @@ func CreateMutagenSync(app *DdevApp) error {
 	if err != nil {
 		return fmt.Errorf("Failed to mutagen %v (%v), output=%s", args, err, out)
 	}
-	util.Debug("Flushing mutagen sync %s", syncName)
-	err = app.MutagenSyncFlush()
-	if err != nil {
-		return err
+	util.Debug("Flushing mutagen sync session '%s'", syncName)
+
+	flushErr := make(chan error, 1)
+	stopGoroutine := make(chan bool, 1)
+	defer close(flushErr)
+	defer close(stopGoroutine)
+
+	go func() {
+		err = app.MutagenSyncFlush()
+		flushErr <- err
+		return
+	}()
+
+	// In tests or other non-interactive environments we don't need to show the
+	// mutagen sync monitor output (and it fills up the test logs)
+
+	if term.IsTerminal(int(os.Stderr.Fd())) {
+		go func() {
+			cmd := osexec.Command(globalconfig.GetMutagenPath(), "sync", "monitor", syncName)
+			stdout, _ := cmd.StdoutPipe()
+			err = cmd.Start()
+			buf := bufio.NewReader(stdout)
+			for {
+				select {
+				case <-stopGoroutine:
+					return
+				default:
+					line, err := buf.ReadBytes('\r')
+					if err != nil {
+						return
+					}
+					l := string(line)
+					if strings.HasPrefix(l, "Status:") {
+						_, _ = fmt.Fprintf(os.Stderr, "%s", l)
+					}
+				}
+			}
+		}()
 	}
-	return nil
+
+	for {
+		select {
+		// Complete when the MutagenSyncFlush() completes
+		case err = <-flushErr:
+			return err
+
+		// Show dots when it seems like nothing is happening
+		case <-time.After(1 * time.Second):
+			_, _ = fmt.Fprintf(os.Stderr, ".")
+		}
+	}
 }
 
 // MutagenStatus checks to see if there is an error case in mutagen
 // We don't want to do a flush yet in that case.
-func (app *DdevApp) MutagenStatus() (status bool, shortResult string, longResult string, err error) {
+// Note that the available statuses are at https://github.com/mutagen-io/mutagen/blob/94b9862a06ab44970c7149aa0000628a6adf54d5/pkg/synchronization/state.go#L9
+// in func (s Status) Description()
+func (app *DdevApp) MutagenStatus() (status string, shortResult string, longResult string, err error) {
 	syncName := MutagenSyncName(app.Name)
 
 	longResult, err = exec.RunHostCommand(globalconfig.GetMutagenPath(), "sync", "list", syncName)
 	shortResult = parseMutagenStatusLine(longResult)
 	if err != nil {
-		return false, shortResult, longResult, err
+		return "failing", shortResult, longResult, err
 	}
 
 	// We're going to assume that if it's applying changes things are still OK,
 	// even though there may be a whole list of problems.
 	if strings.Contains(shortResult, "Applying changes") || strings.Contains(shortResult, "Staging files on") || strings.Contains(shortResult, "Reconciling changes") || strings.Contains(shortResult, "Scanning files") || strings.Contains(shortResult, "Watching for changes") || strings.Contains(shortResult, "Saving archive") {
-		return true, shortResult, longResult, nil
+		rv := "ok"
+		if strings.Contains(longResult, "problems:") {
+			rv = "problems"
+		}
+		return rv, shortResult, longResult, nil
 	}
 	if strings.Contains(longResult, "problems") || strings.Contains(longResult, "Conflicts") || strings.Contains(longResult, "error") || strings.Contains(shortResult, "Halted") {
-		util.Error("mutagen sync %s is not working correctly: %s", syncName, longResult)
-		return false, shortResult, longResult, errors.Errorf("mutagen sync %s is not working correctly, use 'mutagen sync list %s' for details", syncName, syncName)
+		util.Error("mutagen sync session '%s' is not working correctly: %s", syncName, longResult)
+		return "failing", shortResult, longResult, errors.Errorf("mutagen sync session '%s' is not working correctly, use 'mutagen sync list %s' for details", syncName, syncName)
 	}
-	return true, shortResult, longResult, nil
+	return "ok", shortResult, longResult, nil
 }
 
 // parseMutagenStatusLine takes the full mutagen sync list output and
@@ -161,22 +217,18 @@ func (app *DdevApp) MutagenSyncFlush() error {
 	if app.MutagenEnabled || app.MutagenEnabledGlobal {
 		syncName := MutagenSyncName(app.Name)
 		if !MutagenSyncExists(app) {
-			return errors.Errorf("Mutagen sync %s does not exist", syncName)
+			return errors.Errorf("Mutagen sync session '%s' does not exist", syncName)
 		}
-		status, _, long, err := app.MutagenStatus()
-		if !status || err != nil {
-			return errors.Errorf("Mutagen sync %s is in error state: %s (%v)", syncName, long, err)
-		}
-
-		_, err = exec.RunHostCommand(globalconfig.GetMutagenPath(), "sync", "flush", syncName)
+		_, err := exec.RunHostCommand(globalconfig.GetMutagenPath(), "sync", "flush", syncName)
 		if err != nil {
 			return err
 		}
 
-		status, _, _, err = app.MutagenStatus()
-		if !status || err != nil {
+		status, _, _, err := app.MutagenStatus()
+		if status != "ok" || err != nil {
 			return err
 		}
+		util.Success("Flushed mutagen sync session '%s'", syncName)
 	}
 	return nil
 }
@@ -217,7 +269,13 @@ func DownloadMutagen() error {
 // StopMutagenDaemon will try to stop a running mutagen daemon
 // But no problem if there wasn't one
 func StopMutagenDaemon() {
-	_, _ = exec.RunHostCommand(globalconfig.GetMutagenPath(), "daemon", "stop")
+	if fileutil.FileExists(globalconfig.GetMutagenPath()) {
+		out, err := exec.RunHostCommand(globalconfig.GetMutagenPath(), "daemon", "stop")
+		if err != nil && !strings.Contains(out, "unable to connect to daemon") {
+			util.Warning("Unable to stop mutagen daemon: %v", err)
+		}
+		util.Success("Stopped mutagen daemon")
+	}
 }
 
 // DownloadMutagenIfNeeded downloads the proper version of mutagen
@@ -236,34 +294,37 @@ func DownloadMutagenIfNeeded(app *DdevApp) error {
 	return nil
 }
 
-// CheckMutagenVersion determines if the mutagen version of the host
-//system meets the provided version constraint
-func CheckMutagenVersion(versionConstraint string) error {
-	currentVersion, err := version.GetMutagenVersion()
-	if err != nil {
-		return fmt.Errorf("no mutagen")
-	}
-	v, err := semver.NewVersion(currentVersion)
-	if err != nil {
-		return err
-	}
-
-	constraint, err := semver.NewConstraint(versionConstraint)
-	if err != nil {
-		return err
-	}
-
-	match, errs := constraint.Validate(v)
-	if !match {
-		if len(errs) <= 1 {
-			return errs[0]
+// MutagenReset stops (with flush), removes the docker volume, starts again (with flush)
+func MutagenReset(app *DdevApp) error {
+	if app.MutagenEnabled || app.MutagenEnabledGlobal {
+		err := app.Stop(false, false)
+		if err != nil {
+			return errors.Errorf("Failed to stop project %s: %v", app.Name, err)
 		}
-
-		msgs := "\n"
-		for _, err := range errs {
-			msgs = fmt.Sprint(msgs, err, "\n")
+		err = dockerutil.RemoveVolume(GetMutagenVolumeName(app))
+		if err != nil {
+			return err
 		}
-		return fmt.Errorf(msgs)
+		output.UserOut.Printf("Removed docker volume %s", GetMutagenVolumeName(app))
+		err = app.Start()
+		if err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+// GetMutagenVolumeName returns the name for the mutagen docker volume
+func GetMutagenVolumeName(app *DdevApp) string {
+	return app.Name + "_" + "project_mutagen"
+}
+
+// MutagenMonitor shows the ouput of `mutagen sync monitor <syncName>`
+func MutagenMonitor(app *DdevApp) {
+	syncName := MutagenSyncName(app.Name)
+
+	// This doesn't actually return; you have to <ctrl-c> to end it
+	c := osexec.Command(globalconfig.GetMutagenPath(), "sync", "monitor", syncName)
+	c.Stdout = os.Stdout
+	_ = c.Run()
 }

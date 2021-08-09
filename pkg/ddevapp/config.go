@@ -7,7 +7,6 @@ import (
 	"github.com/drud/ddev/pkg/dockerutil"
 	"github.com/drud/ddev/pkg/nodeps"
 	"github.com/mitchellh/go-homedir"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sort"
@@ -209,7 +208,7 @@ func (app *DdevApp) WriteConfig() error {
 	cfgbytes = append(cfgbytes, []byte(ConfigInstructions)...)
 	cfgbytes = append(cfgbytes, appcopy.GetHookDefaultComments()...)
 
-	err = ioutil.WriteFile(appcopy.ConfigPath, cfgbytes, 0644)
+	err = os.WriteFile(appcopy.ConfigPath, cfgbytes, 0644)
 	if err != nil {
 		return err
 	}
@@ -317,7 +316,7 @@ func (app *DdevApp) ReadConfig(includeOverrides bool) ([]string, error) {
 
 // LoadConfigYamlFile loads one config.yaml into app, overriding what might be there.
 func (app *DdevApp) LoadConfigYamlFile(filePath string) error {
-	source, err := ioutil.ReadFile(filePath)
+	source, err := os.ReadFile(filePath)
 	if err != nil {
 		return fmt.Errorf("could not find an active ddev configuration at %s have you run 'ddev config'? %v", app.ConfigPath, err)
 	}
@@ -658,6 +657,7 @@ type composeYAMLVars struct {
 	OmitDBA                   bool
 	OmitSSHAgent              bool
 	MutagenEnabled            bool
+	MutagenVolume             string
 	NFSMountEnabled           bool
 	NFSSource                 string
 	DockerIP                  string
@@ -763,6 +763,7 @@ func (app *DdevApp) RenderComposeYAML() (string, error) {
 	if app.MutagenEnabled || app.MutagenEnabledGlobal {
 		templateVars.MountType = "volume"
 		templateVars.WebMount = "project_mutagen"
+		templateVars.MutagenVolume = GetMutagenVolumeName(app)
 		templateVars.NFSSource = app.AppRoot
 	}
 
@@ -869,7 +870,7 @@ func WriteImageDockerfile(fullpath string, contents []byte) error {
 	if err != nil {
 		return err
 	}
-	err = ioutil.WriteFile(fullpath, contents, 0644)
+	err = os.WriteFile(fullpath, contents, 0644)
 	if err != nil {
 		return err
 	}

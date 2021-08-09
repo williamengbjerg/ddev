@@ -3,7 +3,6 @@ package ddevapp_test
 import (
 	"bufio"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"net/url"
 	"os"
@@ -33,7 +32,6 @@ import (
 	"github.com/drud/ddev/pkg/util"
 	docker "github.com/fsouza/go-dockerclient"
 	"github.com/google/uuid"
-	"github.com/lunixbochs/vtclean"
 	log "github.com/sirupsen/logrus"
 	asrt "github.com/stretchr/testify/assert"
 )
@@ -759,7 +757,7 @@ func TestDdevXdebugEnabled(t *testing.T) {
 		select {
 		case <-acceptListenDone:
 			fmt.Printf("Read from acceptListenDone at %v\n", time.Now())
-		case <-time.After(3 * time.Second):
+		case <-time.After(6 * time.Second):
 			t.Fatalf("Timed out waiting for accept/listen at %v, PHP version %v\n", time.Now(), v)
 		}
 	}
@@ -844,6 +842,8 @@ func TestDdevXhprofEnabled(t *testing.T) {
 			}
 			assert.Contains(stdout, "xhprof.output_dir", "xhprof is not enabled for %s", v)
 
+			// Dummy hit on phpinfo.php to avoid M1 "connection reset by peer"
+			_, _, _ = testcommon.GetLocalHTTPResponse(t, app.GetHTTPSURL()+"/phpinfo.php")
 			out, _, err := testcommon.GetLocalHTTPResponse(t, app.GetHTTPSURL()+"/phpinfo.php")
 			assert.NoError(err, "Failed to get base URL webserver_type=%s, php_version=%s", webserverKey, v)
 			assert.Contains(out, "module_xhprof")
@@ -930,7 +930,7 @@ func TestStartWithoutDdevConfig(t *testing.T) {
 	_, err = ddevapp.GetActiveApp("")
 	assert.Error(err)
 	if err != nil {
-		assert.Contains(err.Error(), "Could not find a project")
+		assert.Contains(err.Error(), "could not find a project")
 	}
 }
 
@@ -1379,6 +1379,9 @@ func TestDdevExportDB(t *testing.T) {
 	assert.NoError(err)
 	assert.True(stringFound)
 
+	// Flush needs to be complete before purge or may conflict with mutagen on windows
+	err = app.MutagenSyncFlush()
+	assert.NoError(err)
 	err = fileutil.PurgeDirectory("tmp")
 	assert.NoError(err)
 
@@ -1724,7 +1727,9 @@ func TestDdevRestoreSnapshot(t *testing.T) {
 	err = os.Remove("hello-post-restore-snapshot-" + app.Name)
 	assert.NoError(err)
 
-	_, _ = testcommon.EnsureLocalHTTPContent(t, app.GetHTTPSURL(), "d7 tester test 1 has 1 node", 45)
+	// Dummy hit in advance to try to avoid M1 "connection reset by peer"
+	_, _, _ = testcommon.GetLocalHTTPResponse(t, app.GetHTTPSURL(), 60)
+	_, _ = testcommon.EnsureLocalHTTPContent(t, app.GetHTTPSURL(), "d7 tester test 1 has 1 node", 60)
 	err = app.RestoreSnapshot("d7testerTest2")
 	assert.NoError(err)
 
@@ -1870,7 +1875,7 @@ func TestDdevImportFilesDir(t *testing.T) {
 	app := &ddevapp.DdevApp{}
 
 	// Create a dummy directory to test non-archive imports
-	importDir, err := ioutil.TempDir("", t.Name())
+	importDir, err := os.MkdirTemp("", t.Name())
 	assert.NoError(err)
 	fileNames := make([]string, 0)
 	for i := 0; i < 5; i++ {
@@ -1878,7 +1883,7 @@ func TestDdevImportFilesDir(t *testing.T) {
 		fileNames = append(fileNames, fileName)
 
 		fullPath := filepath.Join(importDir, fileName)
-		err = ioutil.WriteFile(fullPath, []byte(fileName), 0644)
+		err = os.WriteFile(fullPath, []byte(fileName), 0644)
 		assert.NoError(err)
 	}
 
@@ -1902,12 +1907,12 @@ func TestDdevImportFilesDir(t *testing.T) {
 
 		// Confirm contents of destination dir after import
 		absUploadDir := filepath.Join(app.AppRoot, app.Docroot, app.GetUploadDir())
-		uploadedFiles, err := ioutil.ReadDir(absUploadDir)
+		uploadedFilesDirEntrySlice, err := os.ReadDir(absUploadDir)
 		assert.NoError(err)
 
 		uploadedFilesMap := map[string]bool{}
-		for _, uploadedFile := range uploadedFiles {
-			uploadedFilesMap[filepath.Base(uploadedFile.Name())] = true
+		for _, de := range uploadedFilesDirEntrySlice {
+			uploadedFilesMap[filepath.Base(de.Name())] = true
 		}
 
 		for _, expectedFile := range fileNames {
@@ -1997,9 +2002,9 @@ func TestDdevImportFilesCustomUploadDir(t *testing.T) {
 			assert.NoError(err)
 
 			// Ensure upload dir isn't empty
-			fileInfoSlice, err := ioutil.ReadDir(absUploadDir)
+			dirEntrySlice, err := os.ReadDir(absUploadDir)
 			assert.NoError(err)
-			assert.NotEmpty(fileInfoSlice)
+			assert.NotEmpty(dirEntrySlice)
 		}
 
 		if site.FilesZipballURL != "" {
@@ -2009,9 +2014,9 @@ func TestDdevImportFilesCustomUploadDir(t *testing.T) {
 			assert.NoError(err)
 
 			// Ensure upload dir isn't empty
-			fileInfoSlice, err := ioutil.ReadDir(absUploadDir)
+			dirEntrySlice, err := os.ReadDir(absUploadDir)
 			assert.NoError(err)
-			assert.NotEmpty(fileInfoSlice)
+			assert.NotEmpty(dirEntrySlice)
 		}
 
 		if site.FullSiteTarballURL != "" && site.FullSiteArchiveExtPath != "" {
@@ -2021,9 +2026,9 @@ func TestDdevImportFilesCustomUploadDir(t *testing.T) {
 			assert.NoError(err)
 
 			// Ensure upload dir isn't empty
-			fileInfoSlice, err := ioutil.ReadDir(absUploadDir)
+			dirEntrySlice, err := os.ReadDir(absUploadDir)
 			assert.NoError(err)
-			assert.NotEmpty(fileInfoSlice)
+			assert.NotEmpty(dirEntrySlice)
 		}
 
 		runTime()
@@ -2073,6 +2078,9 @@ func TestDdevExec(t *testing.T) {
 	})
 	assert.NoError(err)
 	assert.Contains(out, "/var/www/html")
+
+	err = app.MutagenSyncFlush()
+	assert.NoError(err)
 
 	assert.FileExists("hello-pre-exec-" + app.Name)
 	assert.FileExists("hello-post-exec-" + app.Name)
@@ -2253,8 +2261,6 @@ func TestProcessHooks(t *testing.T) {
 	assert.NoError(err)
 
 	userOut := userOutFunc()
-	// Ignore color in output, can be different in different OS's
-	out = vtclean.Clean(out, false)
 
 	assert.Contains(userOut, "Executing hook-test hook")
 	assert.Contains(userOut, "Exec command 'ls /usr/local/bin/composer' in container/service 'web'")

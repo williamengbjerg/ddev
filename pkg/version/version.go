@@ -2,6 +2,7 @@ package version
 
 import (
 	"fmt"
+	"github.com/drud/ddev/pkg/fileutil"
 	"github.com/drud/ddev/pkg/globalconfig"
 	"github.com/drud/ddev/pkg/nodeps"
 	"github.com/fsouza/go-dockerclient"
@@ -43,13 +44,13 @@ var MutagenVersionConstraint = nodeps.RequiredMutagenVersion
 var WebImg = "drud/ddev-webserver"
 
 // WebTag defines the default web image tag for drud dev
-var WebTag = "20210714_bullseye_web_image" // Note that this can be overridden by make
+var WebTag = "20210729_cspitzlay_mysql_history" // Note that this can be overridden by make
 
 // DBImg defines the default db image used for applications.
 var DBImg = "drud/ddev-dbserver"
 
 // BaseDBTag is the main tag, DBTag is constructed from it
-var BaseDBTag = "20210709_mariadb_versions"
+var BaseDBTag = "20210729_cspitzlay_mysql_history"
 
 // DBAImg defines the default phpmyadmin image tag used for applications.
 var DBAImg = "phpmyadmin"
@@ -197,6 +198,10 @@ func GetMutagenVersion() (string, error) {
 
 	mutagenPath := globalconfig.GetMutagenPath()
 
+	if !fileutil.FileExists(mutagenPath) {
+		MutagenVersion = "not yet downloaded, will be automatically downloaded when needed"
+		return MutagenVersion, nil
+	}
 	out, err := exec.Command(mutagenPath, "version").Output()
 	if err != nil {
 		return "", err
